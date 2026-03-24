@@ -1,2 +1,2 @@
 ﻿request_count,stop_reason,collected_rows_all,collected_rows_namhae,distinct_stations_all,distinct_stations_namhae,min_datetime,max_datetime,error_rows
-50,REQUEST_BUDGET(50) 도달,678,100,34,5,2026-03-24 00:00:00,2026-03-24 19:00:00,16
+4782,HTTP 429 Too Many Requests,81939,11423,36,5,2025-12-19 00:00:00,2026-03-24 22:00:00,1354
