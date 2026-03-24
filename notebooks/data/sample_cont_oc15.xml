@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 오프라인/구조 테스트용 샘플. 실제 API 응답 태그명이 다르면 파서의 FIELD_ALIASES를 조정하세요. -->
+<response>
+  <header>
+    <resultCode>00</resultCode>
+    <resultMsg>NORMAL_SERVICE</resultMsg>
+  </header>
+  <body>
+    <items>
+      <item>
+        <cntmGridNo>GR2_G1E14</cntmGridNo>
+        <anlsYmd>20260322</anlsYmd>
+        <anlsHm>0015</anlsHm>
+        <ocCrntDrc>45.0</ocCrntDrc>
+        <ocCrntSpd>0.12</ocCrntSpd>
+      </item>
+      <item>
+        <cntmGridNo>GR2_G1E14</cntmGridNo>
+        <anlsYmd>20260322</anlsYmd>
+        <anlsHm>0030</anlsHm>
+        <ocCrntDrc>48.0</ocCrntDrc>
+        <ocCrntSpd>0.15</ocCrntSpd>
+      </item>
+      <item>
+        <cntmGridNo>GR2_G1E14</cntmGridNo>
+        <anlsYmd>20260322</anlsYmd>
+        <anlsHm>0045</anlsHm>
+        <ocCrntDrc>50.0</ocCrntDrc>
+        <ocCrntSpd>0.11</ocCrntSpd>
+      </item>
+    </items>
+  </body>
+</response>
