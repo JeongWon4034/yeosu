@@ -1,0 +1,5 @@
+﻿error_type,count,detail
+null_key_datetime_or_obs,0,datetime/obs_name key null count
+weather_not_matched,375,no weather row matched by datetime+obs_name
+uv_null,375,wind_dir_deg or wind_speed_ms null
+tide_null,0,obs_tide or pred_tide null
