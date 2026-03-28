@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<file_collection>
+	<hydrodynamic>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180101_0000.nc4" />
+			<startTime value="0.0" />	<!-- 2018 01 02 00 00 00-->
+			<endTime value="86400.0" />	<!-- 2018 01 03 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180102_0000.nc4" />
+			<startTime value="86400.0" />	<!-- 2018 01 03 00 00 00-->
+			<endTime value="259200.0" />	<!-- 2018 01 05 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180103_0000.nc4" />
+			<startTime value="172800.0" />	<!-- 2018 01 04 00 00 00-->
+			<endTime value="345600.0" />	<!-- 2018 01 06 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180104_0000.nc4" />
+			<startTime value="259200.0" />	<!-- 2018 01 05 00 00 00-->
+			<endTime value="432000.0" />	<!-- 2018 01 07 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180105_0000.nc4" />
+			<startTime value="345600.0" />	<!-- 2018 01 06 00 00 00-->
+			<endTime value="518400.0" />	<!-- 2018 01 08 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180106_0000.nc4" />
+			<startTime value="432000.0" />	<!-- 2018 01 07 00 00 00-->
+			<endTime value="604800.0" />	<!-- 2018 01 09 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180107_0000.nc4" />
+			<startTime value="518400.0" />	<!-- 2018 01 08 00 00 00-->
+			<endTime value="691200.0" />	<!-- 2018 01 10 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180108_0000.nc4" />
+			<startTime value="604800.0" />	<!-- 2018 01 09 00 00 00-->
+			<endTime value="777600.0" />	<!-- 2018 01 11 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180109_0000.nc4" />
+			<startTime value="691200.0" />	<!-- 2018 01 10 00 00 00-->
+			<endTime value="864000.0" />	<!-- 2018 01 12 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180110_0000.nc4" />
+			<startTime value="777600.0" />	<!-- 2018 01 11 00 00 00-->
+			<endTime value="950400.0" />	<!-- 2018 01 13 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180111_0000.nc4" />
+			<startTime value="864000.0" />	<!-- 2018 01 12 00 00 00-->
+			<endTime value="1036800.0" />	<!-- 2018 01 14 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180112_0000.nc4" />
+			<startTime value="950400.0" />	<!-- 2018 01 13 00 00 00-->
+			<endTime value="1123200.0" />	<!-- 2018 01 15 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180113_0000.nc4" />
+			<startTime value="1036800.0" />	<!-- 2018 01 14 00 00 00-->
+			<endTime value="1209600.0" />	<!-- 2018 01 16 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180114_0000.nc4" />
+			<startTime value="1123200.0" />	<!-- 2018 01 15 00 00 00-->
+			<endTime value="1296000.0" />	<!-- 2018 01 17 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180115_0000.nc4" />
+			<startTime value="1209600.0" />	<!-- 2018 01 16 00 00 00-->
+			<endTime value="1382400.0" />	<!-- 2018 01 18 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180116_0000.nc4" />
+			<startTime value="1296000.0" />	<!-- 2018 01 17 00 00 00-->
+			<endTime value="1468800.0" />	<!-- 2018 01 19 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180117_0000.nc4" />
+			<startTime value="1382400.0" />	<!-- 2018 01 18 00 00 00-->
+			<endTime value="1555200.0" />	<!-- 2018 01 20 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180118_0000.nc4" />
+			<startTime value="1468800.0" />	<!-- 2018 01 19 00 00 00-->
+			<endTime value="1641600.0" />	<!-- 2018 01 21 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180119_0000.nc4" />
+			<startTime value="1555200.0" />	<!-- 2018 01 20 00 00 00-->
+			<endTime value="1728000.0" />	<!-- 2018 01 22 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180120_0000.nc4" />
+			<startTime value="1641600.0" />	<!-- 2018 01 21 00 00 00-->
+			<endTime value="1814400.0" />	<!-- 2018 01 23 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180121_0000.nc4" />
+			<startTime value="1728000.0" />	<!-- 2018 01 22 00 00 00-->
+			<endTime value="1900800.0" />	<!-- 2018 01 24 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180122_0000.nc4" />
+			<startTime value="1814400.0" />	<!-- 2018 01 23 00 00 00-->
+			<endTime value="1987200.0" />	<!-- 2018 01 25 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180123_0000.nc4" />
+			<startTime value="1900800.0" />	<!-- 2018 01 24 00 00 00-->
+			<endTime value="2073600.0" />	<!-- 2018 01 26 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180124_0000.nc4" />
+			<startTime value="1987200.0" />	<!-- 2018 01 25 00 00 00-->
+			<endTime value="2160000.0" />	<!-- 2018 01 27 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180125_0000.nc4" />
+			<startTime value="2073600.0" />	<!-- 2018 01 26 00 00 00-->
+			<endTime value="2246400.0" />	<!-- 2018 01 28 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180126_0000.nc4" />
+			<startTime value="2160000.0" />	<!-- 2018 01 27 00 00 00-->
+			<endTime value="2332800.0" />	<!-- 2018 01 29 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180127_0000.nc4" />
+			<startTime value="2246400.0" />	<!-- 2018 01 28 00 00 00-->
+			<endTime value="2419200.0" />	<!-- 2018 01 30 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180128_0000.nc4" />
+			<startTime value="2332800.0" />	<!-- 2018 01 29 00 00 00-->
+			<endTime value="2505600.0" />	<!-- 2018 01 31 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180129_0000.nc4" />
+			<startTime value="2419200.0" />	<!-- 2018 01 30 00 00 00-->
+			<endTime value="2592000.0" />	<!-- 2018 02 01 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180130_0000.nc4" />
+			<startTime value="2505600.0" />	<!-- 2018 01 31 00 00 00-->
+			<endTime value="2678400.0" />	<!-- 2018 02 02 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180131_0000.nc4" />
+			<startTime value="2592000.0" />	<!-- 2018 02 01 00 00 00-->
+			<endTime value="2764800.0" />	<!-- 2018 02 03 00 00 00-->
+		</file>
+    	<file>
+			<name value="nc_fields\MOHID_Hydrodynamic_Arousa_20180201_0000.nc4" />
+			<startTime value="2678400.0" />	<!-- 2018 02 02 00 00 00-->
+			<endTime value="2851200.0" />	<!-- 2018 02 04 00 00 00-->
+		</file>
+	</hydrodynamic>
+</file_collection>
