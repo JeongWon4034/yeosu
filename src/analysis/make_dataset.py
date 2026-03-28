@@ -7,22 +7,14 @@ import os
 
 print("🚀 데이터 결합 파이프라인 시작...\n")
 
-# 🌟 [현업 꿀팁] 이 파이썬 파일이 있는 '진짜 위치(작은방)'를 스스로 찾게 만듭니다!
-# (이렇게 하면 재생 버튼을 누르든, 터미널에서 치든 절대 길을 잃지 않습니다.)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# 1. 정답지(CSV) 불러오기
 print("1. 남해안 정답지 데이터를 불러오고 가상 관측망(반경 2km)을 생성합니다.")
-
-# 🌟 정원님께서 'final_data' 폴더를 어디에 만드셨는지에 따라 경로를 찾아갑니다.
-# (현재 코드는 yeosu/final_data 에 있다고 가정하고 세팅되었습니다.)
 csv_path = os.path.join(BASE_DIR, '../../final_data/namhae_wide_marine_debris_windows (1).csv')
 
-# 만약 final_data 폴더가 yeosu/src/analysis/final_data 안에 있다면
-# 바로 윗줄 맨 앞에 #을 붙이고, 아래 줄의 #을 지우시면 됩니다!
-# csv_path = os.path.join(BASE_DIR, 'final_data/namhae_wide_marine_debris_windows (1).csv')
-
 if not os.path.exists(csv_path):
-    print(f"❌ 에러: '{csv_path}' 파일을 찾을 수 없습니다! final_data 폴더 위치를 확인해주세요.")
+    print(f"❌ 에러: '{csv_path}' 파일을 찾을 수 없습니다!")
     exit()
 
 df_truth = pd.read_csv(csv_path)
@@ -32,8 +24,9 @@ gdf_truth_buffers = gdf_truth.to_crs("EPSG:5179").buffer(2000).to_crs("EPSG:4326
 gdf_truth['geometry'] = gdf_truth_buffers 
 gdf_truth['mohid_particle_count'] = 0 
 
-# 2. MOHID 물리 데이터(VTU) 불러오기 (예제 데이터는 yeosu/example 에 있죠!)
-vtu_folder = os.path.join(BASE_DIR, '../../example')
+# 🌟 [여기 주소가 바뀌었습니다!]
+# 2. MOHID 물리 데이터(VTU) 불러오기 (final_data 폴더 안의 example 폴더로 찾아감!)
+vtu_folder = os.path.join(BASE_DIR, '../../final_data/example')
 vtu_files = sorted(glob.glob(f"{vtu_folder}/*.vtu"))
 
 if len(vtu_files) == 0:
@@ -61,7 +54,7 @@ print("\n✅ 분석 완료! AI가 학습할 '문제집' 결과입니다:")
 final_dataset = gdf_truth[['지역명', 'mohid_particle_count', '수량(개)', '무게(kg)']]
 print(final_dataset.head(10))
 
-# 완성된 결과물도 깔끔하게 정답지가 있는 final_data 폴더 안에 같이 저장합니다!
+# 저장도 final_data 폴더 안에 나란히 저장됩니다!
 save_path = os.path.join(os.path.dirname(csv_path), "AI_Training_Dataset.csv")
 final_dataset.to_csv(save_path, index=False, encoding='utf-8-sig')
 print(f"\n💾 '{save_path}' 파일로 저장이 완료되었습니다!")
