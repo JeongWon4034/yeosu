@@ -17,6 +17,16 @@ import networkx as nx
 from datetime import timedelta, date as date_type
 import io, base64
 import os
+# ═══════════════════════════════════════════════
+# 파일 경로 자동 설정 (추가된 부분)
+# ═══════════════════════════════════════════════
+# 현재 실행 중인 app.py가 있는 폴더 경로를 가져옵니다.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 모든 파일 경로를 BASE_DIR 기준으로 합칩니다.
+GEOJSON_PATH = os.path.join(BASE_DIR, "yeosu_polygons.geojson")
+ISLAND_CSV_PATH = os.path.join(BASE_DIR, "yeosu_islands_wgs84.csv")
+DASOMI_IMG_PATH = os.path.join(BASE_DIR, "dasomi_nobg.png")
 
 # ═══════════════════════════════════════════════
 # 0. 페이지 & 색상
@@ -313,13 +323,14 @@ def find_route(waypoints, G):
     return path
 
 # ═══════════════════════════════════════════════
-# 4. 데이터 로딩
+# 4. 데이터 로딩 (CSV 경로 수정)
 # ═══════════════════════════════════════════════
 @st.cache_data
 def load_island_data(seed: int) -> pd.DataFrame:
-    df = pd.read_csv("yeosu_islands_wgs84.csv")
-    df.rename(columns={"도서명": "name"}, inplace=True)
-    rng = np.random.default_rng(seed)
+    # 파일 이름을 직접 쓰는 대신 ISLAND_CSV_PATH 변수 사용
+    if not os.path.exists(ISLAND_CSV_PATH):
+        st.error(f"파일을 찾을 수 없습니다: {ISLAND_CSV_PATH}")
+        return pd.DataFrame()
 
     df["risk"]       = rng.integers(5, 100, size=len(df))
     df["trash_cnt"]  = (df["risk"] * rng.uniform(3.0, 5.0, size=len(df))).astype(int)
