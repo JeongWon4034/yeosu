@@ -18,6 +18,7 @@ import networkx as nx
 from datetime import timedelta, date as date_type
 import io, base64
 import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ═══════════════════════════════════════════════
 # 0. 페이지 & 색상
