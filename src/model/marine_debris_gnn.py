@@ -12,7 +12,7 @@ from src.model.lstm_encoder import LSTMEncoder
 class MarineDebrisGNN(nn.Module):
     def __init__(
         self,
-        node_feat_dim: int = 6,
+        node_feat_dim: int = 7,
         lstm_input_dim: int = 8,
         lstm_hidden: int = 64,
         lstm_layers: int = 2,
@@ -86,8 +86,11 @@ class MarineDebrisGNN(nn.Module):
         else:
             x = self.gat2(x, data.edge_index, data.edge_attr)
 
-        # 5. 출력
-        pred = self.out(x).squeeze(-1)  # [N]
+        # 5. 출력: GNN residual + source_count anchor (고정 스케일)
+        # source_count anchor: sc_norm * y_max → source_count 기반 기준 예측
+        sc_anchor = data.x[:, 6] * data.sc_max  # [N]
+        residual  = self.out(x).squeeze(-1)      # [N] — GNN이 잔차 학습
+        pred = sc_anchor + residual
 
         if return_attention:
             return pred, (edge_idx_ret, attn1, attn2)

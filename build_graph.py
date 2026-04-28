@@ -14,7 +14,7 @@ import folium
 
 ROOT = "/Users/jeongwon/yeosu"
 FINAL = os.path.join(ROOT, "final_data")
-OUT = os.path.join(ROOT, "output")
+OUT = os.path.join(ROOT, "output3")
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -50,16 +50,20 @@ print(f"평균 해류: u={mean_u:.4f}, v={mean_v:.4f}, speed={mean_speed:.4f} m/
 # ─────────────────────────────────────────────────────────
 # 1. 노드 피처 구성 [150, 6]
 # ─────────────────────────────────────────────────────────
-# 방출점 노드 (0~126): [lat, lon, is_beach, is_port, is_river, is_fishery]
-rp_feats = rp[["lat", "lon", "type_beach", "type_port", "type_river", "type_fishery"]].values.astype(float)
+# 방출점 노드 (0~126): [lat, lon, is_beach, is_port, is_river, is_fishery, 0]
+rp_feats_6 = rp[["lat", "lon", "type_beach", "type_port", "type_river", "type_fishery"]].values.astype(float)
+rp_feats = np.hstack([rp_feats_6, np.zeros((len(rp), 1))])  # [127, 7]
 
-# 섬 노드 (127~149): [lat, lon, 0, 0, 0, 0]
-island_feats = np.zeros((len(islands), 6))
+# 섬 노드 (127~N): [lat, lon, 0, 0, 0, 0, source_count_norm]
+sc_max = islands["source_count"].max()
+sc_norm = (islands["source_count"].values / sc_max).reshape(-1, 1)
+island_feats = np.zeros((len(islands), 7))
 island_feats[:, 0] = islands["Latitude"].values
 island_feats[:, 1] = islands["Longitude"].values
+island_feats[:, 6] = sc_norm.flatten()  # source_count 정규화값
 
-node_feats = np.vstack([rp_feats, island_feats])  # [150, 6]
-print(f"\n노드 피처 shape: {node_feats.shape}")
+node_feats = np.vstack([rp_feats, island_feats])  # [N, 7]
+print(f"\n노드 피처 shape: {node_feats.shape}  (7번째: source_count_norm)")
 
 # 타깃 y: 방출점=0, 섬=수량(개)
 y = np.zeros(len(rp) + len(islands))
@@ -134,6 +138,7 @@ data = Data(
     edge_attr=edge_attr,
     y=y_tensor,
     train_mask=mask_tensor,
+    sc_max=torch.tensor(float(islands["수량(개)"].max()), dtype=torch.float),
 )
 
 print(f"\n[Data 객체]")

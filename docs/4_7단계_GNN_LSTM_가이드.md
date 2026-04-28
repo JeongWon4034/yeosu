@@ -394,6 +394,7 @@ Step 4-4: GNN+LSTM 모델 정의 및 학습
 
 4. Folium으로 그래프 시각화 (output/graph_visualization.html):
    - 방출점: 타입별 색상 마커 (beach=노랑, port=파랑, river=초록, fishery=빨강)
+   
    - 섬: 검정 원형 마커, 팝업에 수량(개) 표시
    - 엣지: 반투명 선 (거리 가까울수록 진하게)
    - 범례 추가

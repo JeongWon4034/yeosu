@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import glob
 import os
+import math
 
 ROOT = "/Users/jeongwon/yeosu"
 FINAL = os.path.join(ROOT, "final_data")
@@ -22,13 +23,22 @@ def describe_df(name, df):
         print(num.describe().to_string())
 
 
-# ─────────────────────────────────────────────────────────
-# 1. MOHID 결과 + 정답지 병합
-# ─────────────────────────────────────────────────────────
-print("\n>>> STEP 1: MOHID + 정답지 병합")
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-mohid = pd.read_csv(os.path.join(FINAL, "섬_쓰레기_입자개수_3개월_.csv"))
-answer = pd.read_csv(os.path.join(FINAL, "남해_정답지데이터.csv"))
+
+# ─────────────────────────────────────────────────────────
+# 1. MOHID 결과 + 정답지 병합 (이름 기반 inner join)
+# ─────────────────────────────────────────────────────────
+print("\n>>> STEP 1: MOHID + 정답지 병합 (이름 기반)")
+
+mohid = pd.read_csv(os.path.join(FINAL, "남해_섬_MOHID_1분기_결과.csv"))
+answer = pd.read_csv(os.path.join(FINAL, "남해_관측소_정답지데이터.csv"))
 
 describe_df("MOHID 원본", mohid)
 describe_df("정답지 원본", answer)

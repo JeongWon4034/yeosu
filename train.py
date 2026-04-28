@@ -21,7 +21,7 @@ from src.model.marine_debris_gnn import MarineDebrisGNN
 
 ROOT = "/Users/jeongwon/yeosu"
 FINAL = os.path.join(ROOT, "final_data")
-OUT = os.path.join(ROOT, "output")
+OUT = os.path.join(ROOT, "output3")
 os.makedirs(OUT, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────
@@ -43,26 +43,25 @@ graph_data = graph_data.to(DEVICE)
 env_dict   = torch.load(os.path.join(FINAL, "env_sequences.pt"), weights_only=False)
 sequences  = env_dict["sequences"].to(DEVICE)   # [453, 168, 8]
 
+rp         = pd.read_csv(os.path.join(FINAL, "release_points_encoded.csv"))
 islands    = pd.read_csv(os.path.join(FINAL, "island_merged.csv"))
-N_RP       = 127   # 방출점 노드 수
-N_IS       = 23    # 섬 노드 수
+N_RP       = len(rp)       # 방출점 노드 수 (동적)
+N_IS       = len(islands)  # 섬 노드 수 (동적)
+print(f"방출점: {N_RP}개 | 섬: {N_IS}개")
 
 # 물리 제약용 최대값
-SC_MAX = float(islands["source_count"].max())   # 34385.0
-print(f"source_count 최댓값 (물리 제약): {SC_MAX}")
+SC_MAX = float(islands["수량(개)"].max())
+print(f"수량 최댓값 (물리 제약): {SC_MAX}")
 
-# 결측 대체 행 (LOOCV 제외)
-IMPUTED_NAMES = {"해남묵동리", "여수반월", "마산봉암"}
 island_names  = islands["지역명"].tolist()
-# LOOCV에 사용할 섬 인덱스 (결측 3개 제외 → 20개)
-loocv_indices = [i for i, n in enumerate(island_names) if n not in IMPUTED_NAMES]
-print(f"LOOCV 대상 섬: {len(loocv_indices)}개 (결측 3개 제외)")
+loocv_indices = list(range(N_IS))
+print(f"LOOCV 대상 섬: {len(loocv_indices)}개")
 
 # 대표 env 시퀀스: 전체 평균 (단일 시퀀스로 고정)
 env_mean_seq = sequences.mean(dim=0, keepdim=True)  # [1, 168, 8]
 
-# y 값 (섬 노드 순서: 노드 127~149)
-y_all = graph_data.y[N_RP:].cpu().numpy()   # [23]
+# y 값 (섬 노드 순서: 노드 N_RP~N_RP+N_IS)
+y_all = graph_data.y[N_RP:].cpu().numpy()   # [N_IS]
 
 
 # ─────────────────────────────────────────────────────────
@@ -223,7 +222,7 @@ print(f"최종 모델 학습 완료 ({len(final_loss_history)} epochs, best loss
 torch.save({
     "model_state_dict": final_model.state_dict(),
     "model_config": dict(
-        node_feat_dim=6, lstm_input_dim=8, lstm_hidden=64,
+        node_feat_dim=7, lstm_input_dim=8, lstm_hidden=64,
         lstm_layers=2, lstm_embed=32, gat_hidden=64, gat_heads=4, dropout=0.3
     ),
     "loocv_mae": mae,
