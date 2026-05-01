@@ -44,6 +44,19 @@ C = {
     "gray_bg":    "#F5F8FC",
 }
 
+# 출발항 후보 (lon, lat)
+# 일부 항구 좌표는 OSM(Overpass) 이름 매칭 결과를 사용
+PORTS = {
+    "여수항":   [127.730, 34.655],
+    "여수신항": [127.750952, 34.751861],
+    "광양항":   [127.685735, 34.922996],
+    "국동항":   [127.722099, 34.726573],
+    "녹동항":   [127.470, 34.534],
+    "고흥발포항": [127.343, 34.481],
+    "완도항":   [126.760, 34.315],
+}
+DEFAULT_PORT_NAME = "여수항"
+
 TRASH_TYPES = ["부유쓰레기", "해안쓰레기", "침적쓰레기", "어구류", "유류"]
 TRASH_COLORS = {
     "부유쓰레기": "#0066B3",
@@ -203,7 +216,7 @@ st.markdown(f"""
     .rcard {{ border-left:3px solid; border-radius:5px; padding:8px 12px;
               margin-bottom:6px; font-size:.86rem; background:{C['white']};
               box-shadow:0 1px 3px rgba(0,0,0,.06); }}
-    .mbox {{ background:{C['blue_pale']}; border:1px solid {C['gray_light']};
+    .mbox {{ background:{C['white']}; border:1px solid {C['gray_light']};
              border-radius:6px; padding:12px 14px; margin-bottom:8px; }}
     div[data-testid="stTabs"] > div > div > div > button {{
         color:{C['gray_mid']} !important; font-weight:500 !important; font-size:.88rem !important;
@@ -227,7 +240,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 GEOJSON_PATH = "yeosu_polygons.geojson"
-BASE_PORT    = [127.730, 34.655]
+BASE_PORT    = PORTS[DEFAULT_PORT_NAME]
 MAP_STYLE    = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 
 # 2026 박람회 공식 행사장 (돌산도=주행사장, 금오도·개도=부행사장)
@@ -256,6 +269,16 @@ def risk_label(risk: int) -> str:
 def risk_hex(risk: int) -> str:
     c = risk_color(risk, 255)
     return f"#{c[0]:02x}{c[1]:02x}{c[2]:02x}"
+
+def blue_hex_by_risk(risk: int) -> str:
+    """Charts-only blue palette (lighter tones) mapped by risk bands."""
+    if risk >= 80:
+        return "#3E8FD6"
+    if risk >= 60:
+        return "#5FA8E6"
+    if risk >= 40:
+        return "#86C1EE"
+    return "#B6DBF6"
 
 
 # ═══════════════════════════════════════════════
@@ -454,7 +477,10 @@ def build_forecast_chart(name, base, base_trash, dt):
         e = np.random.uniform(4.0, 9.0)
         pred.append(v); lo.append(max(0.0,v-e)); hi.append(min(100.0,v+e))
     trash_pred = [max(0, int(p/max(base,1)*base_trash)) for p in pred]
-    r,g,b = risk_color(base)[:3]; lc=f"rgb({r},{g},{b})"
+    blue_hex = blue_hex_by_risk(int(base))
+    h = blue_hex.lstrip("#")
+    r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    lc = f"rgb({r},{g},{b})"
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=labels+labels[::-1], y=hi+lo[::-1],
         fill="toself", fillcolor=f"rgba({r},{g},{b},.12)",
@@ -463,8 +489,8 @@ def build_forecast_chart(name, base, base_trash, dt):
         name="위험도 예측", line=dict(color=lc, width=2.5),
         marker=dict(size=7, color=lc, line=dict(color="white", width=1.5))))
     fig.add_trace(go.Bar(x=labels, y=trash_pred, name="쓰레기 추정량",
-        marker_color=f"rgba({r},{g},{b},.25)",
-        marker_line_color=f"rgba({r},{g},{b},.6)",
+        marker_color=f"rgba({r},{g},{b},.42)",
+        marker_line_color=f"rgba({r},{g},{b},.85)",
         marker_line_width=1, yaxis="y2"))
     fig.add_trace(go.Scatter(x=[labels[0]], y=[pred[0]], mode="markers", name="현재",
         marker=dict(size=12, color="white", symbol="diamond",
@@ -665,6 +691,16 @@ with st.sidebar:
     obs_only       = st.checkbox("관측소 보유 섬만", value=False)
     expo_mode      = st.checkbox("2026 박람회 관광지 강조", value=False)
 
+    st.markdown('<p class="sec">출발항 설정</p>', unsafe_allow_html=True)
+    start_port_name = st.selectbox(
+        "출발항",
+        list(PORTS.keys()),
+        index=list(PORTS.keys()).index(DEFAULT_PORT_NAME),
+        label_visibility="collapsed",
+    )
+
+BASE_PORT = PORTS[start_port_name]
+
 # ── 데이터 준비 ───────────────────────────────
 islands_df = load_island_data(predict_date.toordinal())
 islands_df["color"] = islands_df["risk"].apply(risk_color)  # 캐시 밖에서 매번 계산
@@ -750,29 +786,38 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── 알림 카드 ─────────────────────────────────
-if not filtered_df.empty:
-    t1 = filtered_df.nlargest(1,"risk").iloc[0]
-    d1 = get_dynamics(t1["name"], int(t1["risk"]), float(t1["lat"]), float(t1["lon"]))
-    r1 = int(t1["risk"])
-    # 위험도 80+ 빨강 / 60~79 주황 / 40~59 노랑 / 그 외 초록
-    if r1 >= 80:
-        border_c, bg_c, label_c, label_txt = "#DC2626", "#FFF5F5", "#B91C1C", "수거 권고"
-    elif r1 >= 60:
-        border_c, bg_c, label_c, label_txt = "#F97316", "#FFF7ED", "#C2410C", "경고"
-    elif r1 >= 40:
-        border_c, bg_c, label_c, label_txt = "#EAB308", "#FEFCE8", "#A16207", "주의"
+_alert_df = filtered_df if not filtered_df.empty else (display_df if not display_df.empty else islands_df)
+if not _alert_df.empty:
+    # 수거 순서와 일치하도록 top_targets 1순위를 우선 사용
+    if not top_targets.empty:
+        t1 = top_targets.iloc[0]
+        alert_prefix = "수거 1순위"
     else:
-        border_c, bg_c, label_c, label_txt = "#22C55E", "#F0FDF4", "#15803D", "모니터링"
+        t1 = _alert_df.nlargest(1, "risk").iloc[0]
+        alert_prefix = "우선 확인"
+    r1 = int(t1["risk"])
+    # 위험도 색상 기반 알림 카드
+    border_c = risk_hex(r1)
+    bg_c = C['white']
+    if r1 >= 80:
+        label_txt = "수거 권고"
+    elif r1 >= 60:
+        label_txt = "경고"
+    elif r1 >= 40:
+        label_txt = "주의"
+    else:
+        label_txt = "모니터링"
     st.markdown(f"""
-<div style="background:{bg_c};border:1.5px solid {border_c};border-left:5px solid {border_c};
-     border-radius:8px;padding:12px 18px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">
-  <div style="background:{border_c};color:white;border-radius:6px;padding:4px 12px;
-       font-size:.78rem;font-weight:700;white-space:nowrap;letter-spacing:0.03em;">{label_txt}</div>
-  <div style="flex:1;font-size:.88rem;color:#1A2B3C;">
-    <b>{t1["name"]}</b>
-    <span style="color:{label_c};font-weight:600;"> 위험도 {r1} | </span>
-    <span style="color:#4B6178;">쓰레기 {int(t1["trash_cnt"])}개</span>
-  </div>
+<div style="background:{bg_c};border:1.5px solid {border_c};border-left:6px solid {border_c};
+         border-radius:8px;padding:12px 18px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">
+    <div style="background:{border_c};color:white;border-radius:10px;padding:6px 14px;
+             font-size:.86rem;font-weight:800;white-space:nowrap;letter-spacing:0.03em;
+             box-shadow:0 3px 10px rgba(0,0,0,0.12);">{label_txt}</div>
+    <div style="flex:1;font-size:.9rem;color:{C['gray_dark']};">
+        <b style="font-size:1.02rem">{t1["name"]}</b>
+        <span style="color:{border_c};font-weight:700;margin-left:8px;"> 위험도 {r1} | </span>
+        <span style="color:{C['gray_mid']};">{alert_prefix} · 쓰레기 {int(t1["trash_cnt"])}개</span>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -791,7 +836,7 @@ with tab_map:
         map_col, info_col = st.columns([3, 1])
 
         with info_col:
-            st.markdown('<p class="sec">수거 순서 (위험도 내림차순)</p>', unsafe_allow_html=True)
+            st.markdown('<p class="sec">수거 순서 </p>', unsafe_allow_html=True)
             for rank, row in top_targets.iterrows():
                 r  = int(row["risk"]); tc = int(row["trash_cnt"])
                 bridge = "육로" if row["has_bridge"] else "선박"
@@ -829,9 +874,9 @@ with tab_map:
 
             port_df = pd.DataFrame([{
                 "lon": BASE_PORT[0], "lat": BASE_PORT[1],
-                "name": "출발항 (여수항)", "order": "P",
+                "name": f"출발항 ({start_port_name})", "order": "P",
                 "color": [0, 102, 179, 255],
-                "tooltip": "출발항 (여수항)",
+                "tooltip": f"출발항 ({start_port_name})",
             }])
 
             obs_df  = display_df[display_df["has_obs"]]
@@ -843,21 +888,23 @@ with tab_map:
                     line_width_min_pixels=1),
                 pdk.Layer("ScatterplotLayer", display_df,
                     get_position="[lon, lat]", get_color="color",
-                    get_radius=400, radius_min_pixels=3, radius_max_pixels=10,
-                    opacity=0.8, pickable=True),
+                    get_radius=450, radius_min_pixels=4, radius_max_pixels=12,
+                    stroked=True, line_width_min_pixels=1,
+                    get_line_color=[255,255,255,255], opacity=0.95, pickable=True),
                 pdk.Layer("ScatterplotLayer", top_targets,
                     get_position="[lon, lat]",
-                    get_color=[0,102,179,35], get_radius=900,
+                    get_color=[0,102,179,160], get_radius=900,
                     radius_min_pixels=14, radius_max_pixels=32,
                     stroked=True, line_width_min_pixels=2,
-                    get_line_color=[0,102,179,200]),
+                    get_line_color=[0,102,179,220]),
                 pdk.Layer("ScatterplotLayer", top_targets,
                     get_position="[lon, lat]", get_color="color",
                     get_radius=500, radius_min_pixels=8, radius_max_pixels=20,
                     pickable=True),
                 pdk.Layer("ScatterplotLayer", port_df,
-                    get_position="[lon, lat]", get_color=[0,102,179,255],
-                    get_radius=500, radius_min_pixels=8, radius_max_pixels=20,
+                    get_position="[lon, lat]", get_color=[0,63,125,255],
+                    get_radius=520, radius_min_pixels=9, radius_max_pixels=22,
+                    stroked=True, line_width_min_pixels=2, get_line_color=[255,255,255,255],
                     pickable=True),
                 pdk.Layer("PathLayer",
                     pd.DataFrame([{"path": route}]),
@@ -921,10 +968,10 @@ with tab_map:
             st.markdown(
                 f'<div style="display:flex;gap:16px;font-size:.78em;'
                 f'color:{C["gray_mid"]};margin-top:5px;flex-wrap:wrap;">'
-                f'<span><span style="color:#22C55E">●</span> 양호(0~39)</span>'
-                f'<span><span style="color:#EAB308">●</span> 주의(40~59)</span>'
-                f'<span><span style="color:#F97316">●</span> 경고(60~79)</span>'
-                f'<span><span style="color:#DC2626">●</span> 위험(80~100)</span>'
+                f'<span><span style="color:{risk_hex(10)}">●</span> 양호(0~39)</span>'
+                f'<span><span style="color:{risk_hex(50)}">●</span> 주의(40~59)</span>'
+                f'<span><span style="color:{risk_hex(70)}">●</span> 경고(60~79)</span>'
+                f'<span><span style="color:{risk_hex(90)}">●</span> 위험(80~100)</span>'
                 f'<span><span style="color:{C["blue_mid"]}">━</span> 수거 노선</span>'
                 f'<span><span style="color:#0891B2;font-weight:700;">●</span> 해양관측소</span>'
                 f'<span><span style="color:#6366F1;font-weight:700;">●</span> 박람회 행사장</span>'
@@ -961,10 +1008,10 @@ with tab_detail:
                 <td style="text-align:right;"><b>{"유인도" if row["inhabited"] else "무인도"}</b></td></tr>
             <tr><td style="padding:4px 0;color:{C['gray_mid']};">연육도현황</td>
                 <td style="text-align:right;"><b>{"연륙교/연도교 있음" if row["has_bridge"] else "없음 (선박 수거)"}</b></td></tr>
-            <tr><td style="padding:4px 0;color:{C['gray_mid']};">해양관측소</td>
-                <td style="text-align:right;">
-                  <b style="color:{"#0066B3" if row["has_obs"] else C["gray_mid"]};">
-                  {"있음 (국가 관측 지점)" if row["has_obs"] else "없음"}</b></td></tr>
+                        <tr><td style="padding:4px 0;color:{C['gray_mid']};">해양관측소</td>
+                                <td style="text-align:right;">
+                                    <b style="color:{C['blue_mid'] if row['has_obs'] else C['gray_mid']};">
+                                    {"있음 (국가 관측 지점)" if row['has_obs'] else "없음"}</b></td></tr>
             <tr><td style="padding:4px 0;color:{C['gray_mid']};">2026 박람회</td>
                 <td style="text-align:right;">
                   <b style="color:{"#16A34A" if row["expo_role"]!="해당 없음" else C["gray_mid"]};">
@@ -987,7 +1034,7 @@ with tab_detail:
             ])
         src       = dyn.get("source", "시뮬레이션")
         is_real   = src.startswith("KHOA 실측")
-        src_color = "#15803D" if is_real else C["gray_mid"]
+        src_color = C["blue_mid"] if is_real else C["gray_mid"]
         st.markdown(f"""
         <div class="detail-card">
           <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;
@@ -1031,13 +1078,34 @@ with tab_mohid:
         wind_dir   = [d["wind_dir"]   for d in dyn_list]
         tide       = [d["tide"]       for d in dyn_list]
         temp       = [d["temp"]       for d in dyn_list]
-        bar_colors = [risk_hex(r) for r in risks]
+
+        # MOHID 탭은 LSTM과 동일한 연한 파랑 팔레트 사용
+        bar_colors = [blue_hex_by_risk(r) for r in risks]
         sources    = [d.get("source", "시뮬레이션") for d in dyn_list]
 
+        def _hex_to_rgb(hex_color: str):
+            h = hex_color.lstrip("#")
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
         def _bar(x, y, title, ytitle, text, hover):
-            fig = go.Figure(go.Bar(x=x, y=y, marker_color=bar_colors,
-                                    text=text, textposition="outside",
-                                    hovertemplate=hover))
+            fill_colors = []
+            line_colors = []
+            for c in bar_colors:
+                r, g, b = _hex_to_rgb(c)
+                fill_colors.append(f"rgba({r},{g},{b},0.42)")
+                line_colors.append(f"rgba({r},{g},{b},0.85)")
+
+            fig = go.Figure(go.Bar(
+                x=x,
+                y=y,
+                marker=dict(
+                    color=fill_colors,
+                    line=dict(color=line_colors, width=1),
+                ),
+                text=text,
+                textposition="outside",
+                hovertemplate=hover,
+            ))
             fig.update_layout(
                 title=dict(text=title, font=dict(size=13, color=C["blue_deep"])),
                 paper_bgcolor=C["white"], plot_bgcolor=C["gray_bg"],
@@ -1083,8 +1151,9 @@ with tab_mohid:
 
         # 데이터 출처 표시
         src_html = " · ".join(
-            f'<span style="color:{"#15803D" if s.startswith("KHOA 실측") else C["gray_mid"]};">'
-            f'<b>{n}</b>: {s}</span>' for n, s in zip(names, sources))
+            f"<span style='color:{C['blue_mid'] if s.startswith('KHOA 실측') else C['gray_mid']};'><b>{n}</b>: {s}</span>"
+            for n, s in zip(names, sources)
+        )
         st.markdown(
             f'<div style="margin-top:12px;font-size:.78em;color:{C["gray_mid"]};">'
             f'{src_html}</div>', unsafe_allow_html=True)
