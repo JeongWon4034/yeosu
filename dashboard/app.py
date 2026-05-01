@@ -18,7 +18,11 @@ import networkx as nx
 from datetime import timedelta, date as date_type
 import io, base64
 import os
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+import requests
+import geopandas as gpd
+from shapely.geometry import Point, LineString
+from shapely.ops import unary_union
+from shapely.prepared import prep
 
 # ═══════════════════════════════════════════════
 # 0. 페이지 & 색상
@@ -77,8 +81,8 @@ st.markdown(f"""
         border-color: {C['blue_mid']} !important;
     }}
     [data-testid="stSidebar"] .stCheckbox [data-baseweb="checkbox"] input:checked + div {{
-        background-color: {C['blue_mid']} !important;
-        border-color: {C['blue_mid']} !important;
+        background-color: transparent !important;
+        border-color: transparent !important;
     }}
     /* 체크박스 선택 시 형광 하이라이트 완전 제거 */
     [data-testid="stSidebar"] .stCheckbox label {{
@@ -238,10 +242,10 @@ OBS_KEYWORDS = ["백야도", "안도", "거문도", "반월도"]
 # 1. 유틸
 # ═══════════════════════════════════════════════
 def risk_color(risk: int, alpha: int = 220) -> list:
-    if risk < 40:  return [34,  197,  94, alpha]
-    if risk < 60:  return [234, 179,   8, alpha]
-    if risk < 80:  return [249, 115,  22, alpha]
-    return              [239,  68,  68, alpha]
+    if risk < 40:  return [ 34, 197,  94, alpha]    # 초록 (양호)
+    if risk < 60:  return [234, 179,   8, alpha]    # 노랑 (주의)
+    if risk < 80:  return [249, 115,  22, alpha]    # 주황 (경고)
+    return              [220,  38,  38, alpha]      # 빨강 (위험)
 
 def risk_label(risk: int) -> str:
     if risk >= 80: return "위험"
@@ -255,57 +259,125 @@ def risk_hex(risk: int) -> str:
 
 
 # ═══════════════════════════════════════════════
-# 2. 육지 판별
+# 2. 육지 판별 (정확한 폴리곤 기반)
 # ═══════════════════════════════════════════════
+@st.cache_resource(show_spinner="육지 영역 로딩 중...")
+def load_land_geom():
+    polys = []
+    # 1) GADM Korea Level 2 — 여수 + 인근 시군구 (가장 정확)
+    try:
+        gadm = gpd.read_file("gadm41_KOR_2.shp")
+        gadm = gadm.cx[126.7:128.2, 33.8:35.2]
+        polys.extend(g for g in gadm.geometry if g and not g.is_empty)
+    except Exception:
+        pass
+    # 2) namhae_final3.shp — 일부 도서 보강
+    try:
+        shp = gpd.read_file("namhae_final3.shp")
+        shp = shp.cx[126.9:128.1, 33.9:35.1]
+        polys.extend(g for g in shp.geometry if g and not g.is_empty)
+    except Exception:
+        pass
+    # 3) yeosu_polygons.geojson — 보강
+    try:
+        gj = gpd.read_file(GEOJSON_PATH)
+        polys.extend(g for g in gj.geometry if g and not g.is_empty)
+    except Exception:
+        pass
+    # (CSV 섬 좌표를 buffer 로 추가하지 않음 — 자기 자신이 buffer 안에 갇혀
+    #  snap·부착 로직이 깨졌던 원인. 큰 섬·본토는 GADM 이 정확히 커버한다.)
+    union = unary_union(polys)
+    return union, prep(union)
+
+_LAND_UNION = None
+_LAND_PREP = None
+def _ensure_land():
+    global _LAND_UNION, _LAND_PREP
+    if _LAND_PREP is None:
+        _LAND_UNION, _LAND_PREP = load_land_geom()
+
 def is_land(lon: float, lat: float) -> bool:
-    if lat > 34.77: return True
-    if 34.66 < lat <= 34.77 and 127.62 < lon < 127.83: return True
-    if 34.72 < lat <= 34.77 and 127.52 < lon <= 127.62: return True
-    if 34.57 < lat <= 34.66 and 127.71 < lon < 127.85: return True
-    return False
+    _ensure_land()
+    return _LAND_PREP.contains(Point(lon, lat))
 
-def edge_crosses_land(a, b, steps: int = 20) -> bool:
-    for t in np.linspace(0, 1, steps):
-        if is_land(a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1])):
-            return True
-    return False
+def edge_crosses_land(a, b) -> bool:
+    _ensure_land()
+    return _LAND_PREP.intersects(LineString([(a[0], a[1]), (b[0], b[1])]))
 
 
 # ═══════════════════════════════════════════════
-# 3. 해상 그래프  # v9
+# 3. 해상 그래프
 # ═══════════════════════════════════════════════
-@st.cache_resource(show_spinner="해상 경로 그래프 초기화 중... (최초 1회)")  # v9
+@st.cache_resource(show_spinner="해상 경로 그래프 초기화 중... (최초 1회)")
 def build_sea_graph():
+    _ensure_land()
     with open(GEOJSON_PATH, "r", encoding="utf-8") as f:
         gj = json.load(f)
-    lons = np.linspace(127.25, 127.95, 70)
-    lats = np.linspace(34.00,  34.95,  85)
+    lons = np.linspace(127.25, 127.95, 110)
+    lats = np.linspace(34.00,  34.95,  130)
     G, nodes = nx.Graph(), []
     for lo in lons:
         for la in lats:
-            if not is_land(lo, la):
+            if not _LAND_PREP.contains(Point(lo, la)):
                 n = (round(lo, 4), round(la, 4))
                 nodes.append(n); G.add_node(n)
     xy = np.array(nodes)
     for i, n1 in enumerate(nodes):
         d = np.hypot(xy[:, 0]-n1[0], xy[:, 1]-n1[1])
-        for j in np.where((d > 0) & (d < 0.035))[0]:
+        for j in np.where((d > 0) & (d < 0.025))[0]:
             n2 = nodes[int(j)]
-            if not G.has_edge(n1, n2) and not edge_crosses_land(n1, n2):
+            if not G.has_edge(n1, n2) and not _LAND_PREP.intersects(
+                LineString([(n1[0], n1[1]), (n2[0], n2[1])])
+            ):
                 G.add_edge(n1, n2, weight=float(d[j]))
     return G, gj
 
+
 def find_route(waypoints, G):
-    nodes = list(G.nodes()); xy = np.array(nodes)
-    def nearest(pt):
-        return nodes[int(np.argmin(np.hypot(xy[:,0]-pt[0], xy[:,1]-pt[1])))]
+    """
+    각 waypoint를 '도달 가능한 가장 가까운 해상 그래프 노드'로 snap 한 뒤 A* 탐색.
+    그래프를 mutate 하지 않으므로 cache 안전. 본토 안/해안 인근 점도 안전하게 처리된다.
+    시각적 정확도를 위해 원래 waypoint 좌표를 path 양 끝에 그대로 부착한다.
+    """
+    _ensure_land()
+    nodes_orig = list(G.nodes())
+    xy_orig    = np.array([(n[0], n[1]) for n in nodes_orig])
+
+    snapped = []
+    for wp in waypoints:
+        d = np.hypot(xy_orig[:, 0]-wp[0], xy_orig[:, 1]-wp[1])
+        order = np.argsort(d)
+        chosen = None
+        # 직선 연결이 육지를 통과하지 않는 가장 가까운 해상 노드를 선택
+        for j in order[:80]:
+            n = nodes_orig[int(j)]
+            if not _LAND_PREP.intersects(LineString([(wp[0], wp[1]), (n[0], n[1])])):
+                chosen = n
+                break
+        if chosen is None:
+            chosen = nodes_orig[int(order[0])]
+        snapped.append(chosen)
+
     path = []
+    # 첫 waypoint 부착: 육지 미통과 시에만
+    wp0 = [float(waypoints[0][0]), float(waypoints[0][1])]
+    s0  = [snapped[0][0], snapped[0][1]]
+    if not _LAND_PREP.intersects(LineString([(wp0[0], wp0[1]), (s0[0], s0[1])])):
+        path.append(wp0)
+
     for i in range(len(waypoints)-1):
+        a, b = snapped[i], snapped[i+1]
         try:
-            seg = nx.astar_path(G, nearest(waypoints[i]), nearest(waypoints[i+1]), weight="weight")
-            path.extend([[p[0],p[1]] for p in seg])
-        except Exception:
-            path.extend([waypoints[i], waypoints[i+1]])
+            seg = nx.astar_path(G, a, b, weight="weight")
+            seg_pts = [[p[0], p[1]] for p in seg]
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            seg_pts = [[a[0], a[1]], [b[0], b[1]]]
+        path.extend(seg_pts)
+        # 다음 waypoint 부착: 육지 미통과 시에만 (본토에 박힌 좌표는 부착 생략)
+        nxt  = [float(waypoints[i+1][0]), float(waypoints[i+1][1])]
+        last = path[-1]
+        if not _LAND_PREP.intersects(LineString([(last[0], last[1]), (nxt[0], nxt[1])])):
+            path.append(nxt)
     return path
 
 
@@ -360,7 +432,7 @@ def load_island_data(seed: int) -> pd.DataFrame:
     if extra_rows:
         df = pd.concat([df, pd.DataFrame(extra_rows)], ignore_index=True)
 
-    df["color"]   = df["risk"].apply(risk_color)
+    # color 컬럼은 캐시에서 제외 (risk_color 변경 시 자동 반영되도록 호출 측에서 매번 계산)
     df["tooltip"] = (
         df["name"] + "\n위험도: " + df["risk"].astype(str) +
         " (" + df["risk"].apply(risk_label) + ")" +
@@ -413,21 +485,148 @@ def build_forecast_chart(name, base, base_trash, dt):
 
 
 # ═══════════════════════════════════════════════
-# 6. MOHID 해양 역학
+# 6. 해양 역학 — 실측 API + 시뮬레이션 fallback
 # ═══════════════════════════════════════════════
-def get_dynamics(name, risk):
-    np.random.seed(abs(hash(name)) % 777)
+# 공공데이터포털 일반 인증키 (KHOA 조위관측 + 기상청 단기예보 공용)
+DATA_GO_KR_KEY = st.secrets.get("DATA_GO_KR_KEY", "")
+
+# KHOA 조위관측소 (여수 작업권역 — 공공데이터포털 활용가이드 기준)
+# 정확 매칭 (섬 이름 = 관측소 이름)
+OBS_CODE = {
+    "거문도": "DT_0031",
+}
+# 가장 가까운 관측소 자동 매핑용 좌표표 (lat, lon)
+# 백야도/안도/반월도는 자체 관측소가 없어 인근 관측소로 보간
+KHOA_NEARBY = [
+    ("DT_0016", "여수",   34.747, 127.766),
+    ("DT_0031", "거문도", 34.034, 127.308),
+    ("DT_0049", "광양",   34.905, 127.757),
+    ("DT_0092", "여호항", 34.650, 127.850),
+    ("DT_0026", "고흥발포", 34.481, 127.343),
+    ("DT_0027", "완도",   34.315, 126.760),
+    ("DT_0014", "통영",   34.827, 128.436),
+]
+
+def _nearest_khoa(lat: float, lon: float, max_deg: float = 0.6):
+    best, best_d = None, max_deg
+    for code, sname, slat, slon in KHOA_NEARBY:
+        d = ((lat-slat)**2 + (lon-slon)**2) ** 0.5
+        if d < best_d:
+            best, best_d = (code, sname, d), d
+    return best  # (obs_code, station_name, dist_deg) or None
+
+def _wind_dir_kor(deg):
+    if deg is None: return "—"
+    try: deg = float(deg)
+    except (TypeError, ValueError): return "—"
+    dirs = ["북","북동","동","남동","남","남서","서","북서"]
+    return dirs[int((deg + 22.5) % 360 // 45)]
+
+# 공공데이터포털 KHOA(국립해양조사원, 기관코드 1192136) — 작동 확인된 4개 service
+KHOA_BASE = "https://apis.data.go.kr/1192136"
+KHOA_OPS = {
+    "temp":     ("surveyWaterTemp", "GetSurveyWaterTempApiService"),  # 실측 수온  (필드 wtem)
+    "wind":     ("surveyWind",      "GetSurveyWindApiService"),        # 풍향/풍속 (wndrct, wspd)
+    "air_temp": ("surveyAirTemp",   "GetSurveyAirTempApiService"),     # 실측 기온 (artmp)
+    "tide_h":   ("hourlyTide",      "GetHourlyTideApiService"),        # 1시간 조위 (tph)
+}
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_khoa(kind: str, obs_code: str) -> list:
+    if not DATA_GO_KR_KEY or kind not in KHOA_OPS:
+        return []
+    from datetime import datetime, timedelta
+    svc, op = KHOA_OPS[kind]
+    # 어제 날짜로 호출 (오늘은 누락 가능)
+    req_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+    params = {
+        "serviceKey": DATA_GO_KR_KEY,
+        "type":       "json",
+        "obsCode":    obs_code,
+        "reqDate":    req_date,
+        "min":        60,
+        "pageNo":     1,
+        "numOfRows":  24,
+    }
+    try:
+        r = requests.get(f"{KHOA_BASE}/{svc}/{op}", params=params, timeout=5)
+        if r.status_code != 200:
+            return []
+        j = r.json()
+        if j.get("header", {}).get("resultCode") != "00":
+            return []
+        items = j.get("body", {}).get("items", {})
+        data  = items.get("item") if isinstance(items, dict) else items
+        if isinstance(data, dict): data = [data]
+        return data or []
+    except Exception:
+        return []
+
+def _simulate_dynamics(name: str, risk: int) -> dict:
+    """KHOA 실측 미수신 시 fallback. 실측 가능 항목만 유지."""
+    rng = np.random.default_rng(abs(hash(name)) % 777)
     return dict(
-        wind_dir  = np.random.choice(["북","북동","동","남동","남","남서","서","북서"]),
-        wind_speed= round(np.random.uniform(2.5, 13.5), 1),
-        current   = round(np.random.uniform(0.4, 2.1),  1),
-        wave      = round(np.random.uniform(0.2, 2.8),  1),
-        tide      = np.random.choice(["밀물 가속 중","썰물 감속 중","정조기"]),
-        cause     = np.random.choice(["해류 집중","강풍 직접 유입","조류 가속","저기압 영향"]),
-        factor    = round(risk/100*2.5+0.5, 1),
-        salinity  = round(np.random.uniform(30.0, 34.5), 1),
-        temp      = round(np.random.uniform(8.5, 22.0),  1),
+        wind_dir  = rng.choice(["북","북동","동","남동","남","남서","서","북서"]),
+        wind_speed= round(float(rng.uniform(2.5, 13.5)), 1),
+        tide      = rng.choice(["밀물 가속 중","썰물 감속 중","정조기"]),
+        temp      = round(float(rng.uniform(8.5, 22.0)),  1),
+        source    = "시뮬레이션",
     )
+
+def _last_num(rows, key):
+    for row in reversed(rows):
+        v = row.get(key)
+        if v not in (None, ""):
+            try: return float(v)
+            except (TypeError, ValueError): pass
+    return None
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_dynamics(name: str, risk: int, lat: float = None, lon: float = None) -> dict:
+    """관측소 보유 섬은 KHOA 실측, 그 외는 인근 관측소 보간 또는 시뮬레이션."""
+    code = OBS_CODE.get(name)
+    station_label = name if code else None
+    if not code and lat is not None and lon is not None:
+        match = _nearest_khoa(float(lat), float(lon))
+        if match:
+            code, station_label, _ = match
+    if not code or not DATA_GO_KR_KEY:
+        return _simulate_dynamics(name, risk)
+    sim = _simulate_dynamics(name, risk)
+    out = dict(sim); used_real = False
+
+    # 수온 (필드 wtem)
+    v = _last_num(_fetch_khoa("temp", code), "wtem")
+    if v is not None:
+        out["temp"] = round(v, 1); used_real = True
+    # 풍향/풍속 (wndrct: 도, wspd: m/s)
+    rows = _fetch_khoa("wind", code)
+    ws = _last_num(rows, "wspd")
+    wd = _last_num(rows, "wndrct")
+    if ws is not None:
+        out["wind_speed"] = round(ws, 1); used_real = True
+    if wd is not None:
+        out["wind_dir"]   = _wind_dir_kor(wd); used_real = True
+    # 1시간 조위 (tph) → 추세로 tide 상태 추정
+    rows = _fetch_khoa("tide_h", code)
+    tide_vals = [v for v in (_safe_float(r.get("tph")) for r in rows) if v is not None]
+    if len(tide_vals) >= 2:
+        diff = tide_vals[-1] - tide_vals[-2]
+        if   abs(diff) < 3: out["tide"] = "정조기"
+        elif diff > 0:      out["tide"] = "밀물 가속 중"
+        else:               out["tide"] = "썰물 감속 중"
+        used_real = True
+
+    if used_real:
+        out["source"] = ("KHOA 실측" if station_label == name
+                         else f"KHOA 실측 ({station_label} 관측소)")
+    else:
+        out["source"] = "시뮬레이션"
+    return out
+
+def _safe_float(v):
+    try: return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError): return None
 
 
 # ═══════════════════════════════════════════════
@@ -460,11 +659,6 @@ with st.sidebar:
     min_risk    = st.slider("최소 위험도", 0, 100, 60, label_visibility="collapsed")
     num_targets = st.slider("수거 대상 섬 수", 1, 10, 3)
 
-    st.markdown('<p class="sec">쓰레기 유형 필터</p>', unsafe_allow_html=True)
-    sel_trash_types = st.multiselect(
-        "유형 선택 (미선택 시 전체)", options=TRASH_TYPES, default=[],
-        label_visibility="collapsed")
-
     st.markdown('<p class="sec">수거 유형 필터</p>', unsafe_allow_html=True)
     sea_only       = st.checkbox("선박 수거 대상만 (연륙교 제외)", value=True)
     inhabited_only = st.checkbox("유인도만 보기", value=False)
@@ -473,37 +667,26 @@ with st.sidebar:
 
 # ── 데이터 준비 ───────────────────────────────
 islands_df = load_island_data(predict_date.toordinal())
+islands_df["color"] = islands_df["risk"].apply(risk_color)  # 캐시 밖에서 매번 계산
 
 display_df = islands_df.copy()
 if sea_only:       display_df = display_df[~display_df["has_bridge"]]
 if inhabited_only: display_df = display_df[display_df["inhabited"] == 1]
 if obs_only:       display_df = display_df[display_df["has_obs"]]
-if sel_trash_types:
-    display_df = display_df[display_df["trash_types"].apply(
-        lambda t: any(tt in t for tt in sel_trash_types))]
 
 display_df  = display_df[display_df["risk"] >= min_risk].copy()
 filtered_df = display_df.copy()
-top_targets = (filtered_df.nlargest(num_targets, "risk").reset_index(drop=True).copy()
-               if not filtered_df.empty else pd.DataFrame())
-
-# ── 사이드바 순위 ─────────────────────────────
-with st.sidebar:
-    st.markdown('<p class="sec">위험도 순위</p>', unsafe_allow_html=True)
-    if filtered_df.empty:
-        st.caption("해당 조건의 섬이 없습니다.")
-    else:
-        for i, (_, row) in enumerate(filtered_df.nlargest(10, "risk").iterrows(), 1):
-            bridge = "육로" if row["has_bridge"] else "해상"
-            inh    = "유인" if row["inhabited"]  else "무인"
-            st.markdown(
-                f'<div class="rcard" style="border-color:{risk_hex(int(row["risk"]))};">'
-                f'<b>{i}위</b> {row["name"]}'
-                f'<span style="float:right;font-size:.75em;color:{C["gray_mid"]};">'
-                f'{bridge}·{inh}·{int(row["risk"])}</span><br>'
-                f'<span style="font-size:.72em;color:{C["gray_mid"]};">'
-                f'{int(row["trash_cnt"])}개 · {row["main_type"]}</span></div>',
-                unsafe_allow_html=True)
+# 동점 처리: 1차 위험도↓ → 2차 쓰레기량↓ → 3차 출발항 거리↑
+if not filtered_df.empty:
+    _fd = filtered_df.copy()
+    _fd["_dist_port"] = ((_fd["lat"]-BASE_PORT[1])**2 + (_fd["lon"]-BASE_PORT[0])**2) ** 0.5
+    top_targets = (_fd.sort_values(["risk", "trash_cnt", "_dist_port"],
+                                    ascending=[False, False, True])
+                      .head(num_targets)
+                      .drop(columns=["_dist_port"])
+                      .reset_index(drop=True).copy())
+else:
+    top_targets = pd.DataFrame()
 
 # ══════════════════════════════════════════════
 # 상단 헤더
@@ -542,10 +725,7 @@ st.markdown(f"""
       <div class="expo-header-badge">섬, 바다와 미래를 잇다</div>
       <div class="expo-header-title">🌊 여수 해양쓰레기 통합 수거 관리 시스템</div>
       <p class="expo-header-sub">
-        분석기간: {start_date} ~ {end_date} ({date_range_days}일) &nbsp;·&nbsp;
-        조건충족 <b style="color:white">{filtered_cnt}</b>개 섬 &nbsp;·&nbsp;
-        쓰레기 추정 <b style="color:white">{total_trash:,}</b>개 &nbsp;·&nbsp;
-        A* 해상경로 · LSTM · MOHID
+        조건충족 {filtered_cnt}개 섬 · 쓰레기 {total_trash:,}개
       </p>
     </div>
     <div style="display:flex;align-items:flex-end;gap:10px;flex-shrink:0;">
@@ -572,27 +752,26 @@ st.markdown(f"""
 # ── 알림 카드 ─────────────────────────────────
 if not filtered_df.empty:
     t1 = filtered_df.nlargest(1,"risk").iloc[0]
-    d1 = get_dynamics(t1["name"], int(t1["risk"]))
+    d1 = get_dynamics(t1["name"], int(t1["risk"]), float(t1["lat"]), float(t1["lon"]))
     r1 = int(t1["risk"])
-    # 위험도 80+ → 빨강 / 60~79 → 파랑 / 나머지 → 연파랑
+    # 위험도 80+ 빨강 / 60~79 주황 / 40~59 노랑 / 그 외 초록
     if r1 >= 80:
-        border_c, bg_c, label_c, label_txt = "#EF4444", "#FFF5F5", "#DC2626", "수거 권고"
+        border_c, bg_c, label_c, label_txt = "#DC2626", "#FFF5F5", "#B91C1C", "수거 권고"
     elif r1 >= 60:
-        border_c, bg_c, label_c, label_txt = "#0066B3", "#E8F4FD", "#003F7D", "주의 필요"
+        border_c, bg_c, label_c, label_txt = "#F97316", "#FFF7ED", "#C2410C", "경고"
+    elif r1 >= 40:
+        border_c, bg_c, label_c, label_txt = "#EAB308", "#FEFCE8", "#A16207", "주의"
     else:
-        border_c, bg_c, label_c, label_txt = "#4DA6E0", "#F0F8FF", "#0066B3", "모니터링"
+        border_c, bg_c, label_c, label_txt = "#22C55E", "#F0FDF4", "#15803D", "모니터링"
     st.markdown(f"""
 <div style="background:{bg_c};border:1.5px solid {border_c};border-left:5px solid {border_c};
      border-radius:8px;padding:12px 18px;margin-bottom:10px;display:flex;align-items:center;gap:16px;">
   <div style="background:{border_c};color:white;border-radius:6px;padding:4px 12px;
        font-size:.78rem;font-weight:700;white-space:nowrap;letter-spacing:0.03em;">{label_txt}</div>
   <div style="flex:1;font-size:.88rem;color:#1A2B3C;">
-    <b>1순위 — {t1["name"]}</b>
-    <span style="color:{label_c};font-weight:600;"> 위험도 {r1}/100</span>
-    <span style="color:#4B6178;"> · 쓰레기 약 {int(t1["trash_cnt"])}개 · {t1["main_type"]}</span><br>
-    <span style="color:#4B6178;font-size:.82rem;">
-      {d1["wind_dir"]}풍 {d1["wind_speed"]}m/s · 유속 {d1["current"]}m/s · {d1["cause"]}
-    </span>
+    <b>{t1["name"]}</b>
+    <span style="color:{label_c};font-weight:600;"> 위험도 {r1} | </span>
+    <span style="color:#4B6178;">쓰레기 {int(t1["trash_cnt"])}개</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -617,21 +796,13 @@ with tab_map:
                 r  = int(row["risk"]); tc = int(row["trash_cnt"])
                 bridge = "육로" if row["has_bridge"] else "선박"
                 inh    = "유인도" if row["inhabited"] else "무인도"
-                types_html = "".join(
-                    f'<span class="trash-badge" '
-                    f'style="background:{TRASH_COLORS.get(t.strip(), C["blue_mid"])}22;'
-                    f'color:{TRASH_COLORS.get(t.strip(), C["blue_mid"])};'
-                    f'border:1px solid {TRASH_COLORS.get(t.strip(), C["blue_mid"])}44;">'
-                    f'{t.strip()}</span>'
-                    for t in row["trash_types"].split(", "))
                 st.markdown(
                     f'<div class="rcard" style="border-color:{risk_hex(r)};">'
                     f'<span style="background:{risk_hex(r)};color:white;border-radius:3px;'
                     f'padding:1px 7px;font-size:.8rem;font-weight:700;">{rank+1}</span>'
                     f'&nbsp;<b>{row["name"]}</b><br>'
                     f'<span style="color:{C["gray_mid"]};font-size:.78em;">'
-                    f'위험도 {r} · {risk_label(r)} · {bridge} · {inh} · {tc}개</span><br>'
-                    f'{types_html}</div>', unsafe_allow_html=True)
+                    f'위험도 {r} · {risk_label(r)} · {bridge} · {inh} · {tc}개</span></div>', unsafe_allow_html=True)
 
             st.markdown("---")
             bn  = int(top_targets["has_bridge"].sum())
@@ -692,35 +863,35 @@ with tab_map:
                     pd.DataFrame([{"path": route}]),
                     get_path="path", get_color=[0,102,179,200],
                     width_min_pixels=3, width_max_pixels=6),
-                # 관측소 — 보라색 (필터 따라)
+                # 관측소 — 청록색 작은 도트 + 깔끔한 라벨
                 *([pdk.Layer("ScatterplotLayer", obs_df,
                     get_position="[lon, lat]",
-                    get_color=[237,233,254,90], get_radius=750,
-                    radius_min_pixels=12, radius_max_pixels=26,
-                    stroked=True, line_width_min_pixels=3,
-                    get_line_color=[124,58,237,255]),
+                    get_color=[8,145,178,255], get_radius=320,
+                    radius_min_pixels=6, radius_max_pixels=12,
+                    stroked=True, line_width_min_pixels=2,
+                    get_line_color=[255,255,255,255]),
                   pdk.Layer("TextLayer", obs_df,
-                    get_position="[lon, lat]", get_text="['관측']",
-                    get_size=10, get_color=[109,40,217,255],
+                    get_position="[lon, lat]", get_text="['관측소']",
+                    get_size=10, get_color=[255,255,255,255],
                     background=True,
-                    get_background_color=[237,233,254,220],
-                    get_border_color=[124,58,237,180],
-                    get_padding=[3,2,3,2], get_pixel_offset=[0,-24],
+                    get_background_color=[8,145,178,235],
+                    get_border_color=[8,145,178,255],
+                    get_padding=[5,2,5,2], get_pixel_offset=[0,-20],
                     billboard=True)] if not obs_df.empty else []),
-                # 박람회 — 초록색 (expo_mode 체크 시)
+                # 박람회 — 인디고 작은 도트 + 깔끔한 라벨 (위험도 초록과 충돌 방지)
                 *([pdk.Layer("ScatterplotLayer", expo_df,
                     get_position="[lon, lat]",
-                    get_color=[220,252,231,60], get_radius=900,
-                    radius_min_pixels=14, radius_max_pixels=30,
-                    stroked=True, line_width_min_pixels=3,
-                    get_line_color=[22,163,74,220]),
+                    get_color=[99,102,241,255], get_radius=360,
+                    radius_min_pixels=7, radius_max_pixels=14,
+                    stroked=True, line_width_min_pixels=2,
+                    get_line_color=[255,255,255,255]),
                   pdk.Layer("TextLayer", expo_df,
                     get_position="[lon, lat]", get_text="['박람회']",
-                    get_size=10, get_color=[21,128,61,255],
+                    get_size=10, get_color=[255,255,255,255],
                     background=True,
-                    get_background_color=[220,252,231,230],
-                    get_border_color=[22,163,74,180],
-                    get_padding=[3,2,3,2], get_pixel_offset=[0,26],
+                    get_background_color=[99,102,241,235],
+                    get_border_color=[79,70,229,255],
+                    get_padding=[5,2,5,2], get_pixel_offset=[0,20],
                     billboard=True)] if expo_mode and not expo_df.empty else []),
                 pdk.Layer("TextLayer", top_targets,
                     get_position="[lon, lat]", get_text="order",
@@ -753,10 +924,10 @@ with tab_map:
                 f'<span><span style="color:#22C55E">●</span> 양호(0~39)</span>'
                 f'<span><span style="color:#EAB308">●</span> 주의(40~59)</span>'
                 f'<span><span style="color:#F97316">●</span> 경고(60~79)</span>'
-                f'<span><span style="color:#EF4444">●</span> 위험(80~100)</span>'
+                f'<span><span style="color:#DC2626">●</span> 위험(80~100)</span>'
                 f'<span><span style="color:{C["blue_mid"]}">━</span> 수거 노선</span>'
-                f'<span><span style="color:#7C3AED;font-weight:700;">◉</span> 해양관측소</span>'
-                f'<span><span style="color:#16A34A;font-weight:700;">◉</span> 박람회 행사장</span>'
+                f'<span><span style="color:#0891B2;font-weight:700;">●</span> 해양관측소</span>'
+                f'<span><span style="color:#6366F1;font-weight:700;">●</span> 박람회 행사장</span>'
                 f'</div>', unsafe_allow_html=True)
 
 
@@ -769,9 +940,9 @@ with tab_detail:
                               if not top_targets.empty else 0)
     row = islands_df[islands_df["name"] == sel_island].iloc[0]
     r   = int(row["risk"])
-    dyn = get_dynamics(sel_island, r)
+    dyn = get_dynamics(sel_island, r, float(row["lat"]), float(row["lon"]))
 
-    c1, c2, c3 = st.columns(3)
+    c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"""
         <div class="detail-card">
@@ -811,34 +982,20 @@ with tab_detail:
             f'<td style="text-align:right;color:{C["gray_dark"]};"><b>{v}</b></td></tr>'
             for k,v in [
                 ("풍향/풍속", f'{dyn["wind_dir"]}풍 {dyn["wind_speed"]} m/s'),
-                ("해수 유속", f'{dyn["current"]} m/s'),
-                ("파고",     f'{dyn["wave"]} m'),
                 ("조류 상태", dyn["tide"]),
                 ("수온",     f'{dyn["temp"]} °C'),
-                ("염분",     f'{dyn["salinity"]} psu'),
-                ("유입 원인", dyn["cause"]),
-                ("위험 배율", f'×{dyn["factor"]}'),
             ])
+        src       = dyn.get("source", "시뮬레이션")
+        is_real   = src.startswith("KHOA 실측")
+        src_color = "#15803D" if is_real else C["gray_mid"]
         st.markdown(f"""
         <div class="detail-card">
           <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;
-               color:{C['gray_mid']};margin-bottom:8px;">해양 역학 (MOHID)</div>
+               color:{C['gray_mid']};margin-bottom:8px;">해양 역학</div>
           <table style="width:100%;font-size:.84em;border-collapse:collapse;">{rows_html}</table>
-          <div style="margin-top:10px;font-size:.7rem;color:{C['gray_mid']};">
-            MOHID 해양 물리 시뮬레이션 기반</div>
+          <div style="margin-top:10px;font-size:.72rem;color:{src_color};">
+            출처: <b>{src}</b></div>
         </div>""", unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(
-            f'<div class="detail-card">'
-            f'<div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;'
-            f'color:{C["gray_mid"]};margin-bottom:8px;">5일 위험도 추이 (LSTM)</div>',
-            unsafe_allow_html=True)
-        mini_fig = build_forecast_chart(sel_island, r, int(row["trash_cnt"]), predict_date)
-        mini_fig.update_layout(height=250, margin=dict(l=5,r=30,t=30,b=5),
-                               title=None, showlegend=False)
-        st.plotly_chart(mini_fig, use_container_width=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ── TAB 3: LSTM 예측 ─────────────────────────
@@ -856,45 +1013,84 @@ with tab_predict:
                    "향후 5일간 위험도 및 쓰레기 유입량을 예측합니다. 음영은 95% 신뢰구간입니다.")
 
 
-# ── TAB 4: MOHID ─────────────────────────────
+# ── TAB 4: 해양 역학 비교 (Top 3) ────────────
 with tab_mohid:
     if top_targets.empty:
         st.info("수거 대상 섬이 없습니다.")
     else:
-        cols = st.columns(min(len(top_targets), 3))
-        for i, (_, row) in enumerate(top_targets.head(3).iterrows()):
-            dyn = get_dynamics(row["name"], int(row["risk"]))
-            r   = int(row["risk"]); hc = risk_hex(r)
-            items = [
-                ("풍향/풍속",  f'{dyn["wind_dir"]}풍 {dyn["wind_speed"]} m/s'),
-                ("해수 유속",  f'{dyn["current"]} m/s'),
-                ("파고",      f'{dyn["wave"]} m'),
-                ("조류 상태",  dyn["tide"]),
-                ("수온",      f'{dyn["temp"]} °C'),
-                ("염분",      f'{dyn["salinity"]} psu'),
-                ("유입 원인",  dyn["cause"]),
-                ("위험 배율",  f'×{dyn["factor"]}'),
-                ("쓰레기 추정", f'{int(row["trash_cnt"])}개'),
-            ]
-            rows_html = "".join(
-                f'<tr><td style="padding:4px 0;color:{C["gray_mid"]};">{k}</td>'
-                f'<td style="text-align:right;color:{C["gray_dark"]};"><b>{v}</b></td></tr>'
-                for k,v in items)
-            with cols[i]:
-                st.markdown(
-                    f'<div style="border:1px solid {hc};background:{C["gray_bg"]};'
-                    f'border-radius:6px;padding:14px;">'
-                    f'<div style="font-size:.7rem;text-transform:uppercase;'
-                    f'letter-spacing:.08em;color:{C["gray_mid"]};margin-bottom:6px;">{risk_label(r)}</div>'
-                    f'<div style="font-size:.98rem;font-weight:700;'
-                    f'color:{C["blue_deep"]};margin-bottom:10px;">{row["name"]}</div>'
-                    f'<table style="width:100%;font-size:.84em;border-collapse:collapse;">'
-                    f'{rows_html}</table>'
-                    f'<div style="margin-top:10px;font-size:.7rem;color:{C["gray_mid"]};">'
-                    f'MOHID 해양 물리 시뮬레이션 기반</div></div>',
-                    unsafe_allow_html=True)
-        st.caption("MOHID 해양 시뮬레이션과 기상청 API를 결합하여 "
-                   "쓰레기 유입 원인을 물리적 수치로 설명합니다.")
+        st.markdown("#### Top 수거 대상 한눈 비교")
+
+        compare = top_targets.head(3).copy()
+        dyn_list = [get_dynamics(r["name"], int(r["risk"]),
+                                  float(r["lat"]), float(r["lon"]))
+                    for _, r in compare.iterrows()]
+        names      = compare["name"].tolist()
+        risks      = compare["risk"].astype(int).tolist()
+        trash      = compare["trash_cnt"].astype(int).tolist()
+        wind_speed = [d["wind_speed"] for d in dyn_list]
+        wind_dir   = [d["wind_dir"]   for d in dyn_list]
+        tide       = [d["tide"]       for d in dyn_list]
+        temp       = [d["temp"]       for d in dyn_list]
+        bar_colors = [risk_hex(r) for r in risks]
+        sources    = [d.get("source", "시뮬레이션") for d in dyn_list]
+
+        def _bar(x, y, title, ytitle, text, hover):
+            fig = go.Figure(go.Bar(x=x, y=y, marker_color=bar_colors,
+                                    text=text, textposition="outside",
+                                    hovertemplate=hover))
+            fig.update_layout(
+                title=dict(text=title, font=dict(size=13, color=C["blue_deep"])),
+                paper_bgcolor=C["white"], plot_bgcolor=C["gray_bg"],
+                yaxis=dict(gridcolor=C["gray_light"], title=ytitle),
+                xaxis=dict(title=""), height=260,
+                margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
+            return fig
+
+        # Row 1: 위험도 / 쓰레기량 (모델 예측 영역)
+        c1, c2 = st.columns(2)
+        with c1:
+            f1 = _bar(names, risks, "위험도 비교", "위험도",
+                      risks, "%{x}<br>위험도 %{y}<extra></extra>")
+            f1.update_yaxes(range=[0, 110])
+            st.plotly_chart(f1, use_container_width=True)
+        with c2:
+            f2 = _bar(names, trash, "쓰레기 추정량 비교", "개수",
+                      [f"{t:,}" for t in trash], "%{x}<br>쓰레기 %{y:,}개<extra></extra>")
+            st.plotly_chart(f2, use_container_width=True)
+
+        # Row 2: 풍속 / 수온 (KHOA 실측 영역)
+        c3, c4 = st.columns(2)
+        with c3:
+            f3 = _bar(names, wind_speed, "풍속 (KHOA 실측)", "m/s",
+                      [f"{v}" for v in wind_speed], "%{x}<br>풍속 %{y} m/s<extra></extra>")
+            st.plotly_chart(f3, use_container_width=True)
+        with c4:
+            f4 = _bar(names, temp, "수온 (KHOA 실측)", "°C",
+                      [f"{v}" for v in temp], "%{x}<br>수온 %{y} °C<extra></extra>")
+            st.plotly_chart(f4, use_container_width=True)
+
+        # Row 3: 풍향 · 조류 상태 텍스트 카드
+        text_cols = st.columns(len(names))
+        for i, col in enumerate(text_cols):
+            with col:
+                st.markdown(f"""
+<div style="border:1px solid {C['gray_light']};background:{C['white']};
+     border-radius:6px;padding:12px 14px;text-align:center;">
+  <div style="font-size:.95rem;font-weight:700;color:{C['blue_deep']};margin-bottom:6px;">{names[i]}</div>
+  <div style="font-size:.82rem;color:{C['gray_mid']};">풍향 <b style="color:{C['gray_dark']};">{wind_dir[i]}</b>
+       &nbsp;·&nbsp; 조류 <b style="color:{C['gray_dark']};">{tide[i]}</b></div>
+</div>""", unsafe_allow_html=True)
+
+        # 데이터 출처 표시
+        src_html = " · ".join(
+            f'<span style="color:{"#15803D" if s.startswith("KHOA 실측") else C["gray_mid"]};">'
+            f'<b>{n}</b>: {s}</span>' for n, s in zip(names, sources))
+        st.markdown(
+            f'<div style="margin-top:12px;font-size:.78em;color:{C["gray_mid"]};">'
+            f'{src_html}</div>', unsafe_allow_html=True)
+        st.caption("KHOA 조위관측소 실측치(수온·풍향풍속·조류상태)를 사용. "
+                   "관측소 미보유 섬은 가장 가까운 관측소 데이터로 보간하며, "
+                   "위험도·쓰레기량은 LSTM 예측 모델 결과를 연결할 자리입니다.")
 
 
 # ── TAB 5: 데이터 추출 ───────────────────────
