@@ -1,7 +1,7 @@
-# 두둥실 (DuDungSil) 🌊
+# 도동실 (DoDongSil) 🌊
 ### Marine Debris Prediction & Response System for Yeosu Island Archipelago
 
-> **물리 시뮬레이션 × 그래프 신경망 × 시계열 LSTM — 설명 가능한 해양쓰레기 예측**  
+> **해양쓰레기 예측 모델 구축 프로젝트**  
 > Physics-Informed Grey-box AI for Proactive Marine Debris Management
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
